@@ -1,0 +1,26 @@
+{
+  "name": "gemini-websocket-voice-chat",
+  "version": "1.0.0",
+  "description": "Simple voice chat with Gemini Live API using WebSocket",
+  "main": "voice-chat.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "chat": "node voice-chat.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "keywords": [
+    "gemini",
+    "voice",
+    "chat",
+    "websocket",
+    "live-api"
+  ],
+  "author": "",
+  "license": "ISC"
+}

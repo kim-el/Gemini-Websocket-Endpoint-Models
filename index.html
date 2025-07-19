@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Live Voice Transcription</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .controls {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ff8e53);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .recording {
+            background: linear-gradient(45deg, #ff4757, #ff3838) !important;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 18px;
+            min-height: 30px;
+        }
+        
+        .transcription {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            padding: 20px;
+            border-radius: 10px;
+            min-height: 150px;
+            max-height: 400px;
+            margin: 20px 0;
+            font-size: 16px;
+            line-height: 1.8;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        
+        .transcription p {
+            margin: 0 0 16px 0;
+            text-align: justify;
+            text-indent: 20px;
+        }
+        
+        .transcription p:last-child {
+            margin-bottom: 0;
+        }
+        
+        .transcription em {
+            font-style: italic;
+            color: #666;
+            text-indent: 0;
+        }
+
+        .token-counter {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            font-family: 'Courier New', monospace;
+        }
+
+        .counter-header {
+            text-align: center;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .counter-header h4 {
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .session-info {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .token-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .token-section {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .section-title {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .token-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c5aa0;
+            margin-bottom: 3px;
+        }
+
+        .token-detail {
+            font-size: 10px;
+            color: #888;
+        }
+
+        .total-section {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .total-label {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .total-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .rate-info {
+            font-size: 11px;
+            opacity: 0.9;
+        }
+        
+        .connection-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .connected { background-color: #2ecc71; }
+        .disconnected { background-color: #e74c3c; }
+        .connecting { background-color: #f39c12; }
+        
+        .info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Gemini Live Voice Transcription</h1>
+        
+        <div class="info">
+            <p><strong>How it works:</strong> Click "Start Recording" to begin capturing your voice. Speak clearly, and your speech will be transcribed in real-time using Gemini's Live API via WebSocket connection.</p>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">🎤 Start Recording</button>
+            <button id="stopBtn" disabled>⏹️ Stop Recording</button>
+            <button id="clearBtn">🗑️ Clear Transcription</button>
+        </div>
+        
+        <div class="status" id="status">
+            <span class="connection-status disconnected" id="connectionStatus"></span>
+            <span id="statusText">Click "Start Recording" to begin</span>
+        </div>
+        
+        <div class="transcription" id="transcription">
+            <em>Your voice transcription will appear here...</em>
+        </div>
+
+        <div class="token-counter" id="tokenCounter">
+            <div class="counter-header">
+                <h4>Live API Token Counter</h4>
+                <div class="session-info">
+                    Session: <span id="sessionDuration">0s</span> | 
+                    Cost: <span id="estimatedCost">$0.000000</span>
+                </div>
+            </div>
+            
+            <div class="token-grid">
+                <div class="token-section">
+                    <div class="section-title">Audio Input</div>
+                    <div class="token-value" id="audioInputTokens">0</div>
+                    <div class="token-detail"><span id="audioInputTime">0s</span> × 25 tokens/sec</div>
+                </div>
+                
+                <div class="token-section">
+                    <div class="section-title">Audio Output</div>
+                    <div class="token-value" id="audioOutputTokens">0</div>
+                    <div class="token-detail"><span id="audioOutputTime">0s</span> × 25 tokens/sec</div>
+                </div>
+                
+                <div class="token-section">
+                    <div class="section-title">Text Input</div>
+                    <div class="token-value" id="textInputTokens">0</div>
+                    <div class="token-detail">~4 chars/token</div>
+                </div>
+                
+                <div class="token-section">
+                    <div class="section-title">Text Output</div>
+                    <div class="token-value" id="textOutputTokens">0</div>
+                    <div class="token-detail">~4 chars/token</div>
+                </div>
+            </div>
+            
+            <div class="total-section">
+                <div class="total-label">Total Tokens</div>
+                <div class="total-value" id="totalTokens">0</div>
+                <div class="rate-info">$0.10 per 1M tokens</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="voice-transcription.js"></script>
+</body>
+</html>
