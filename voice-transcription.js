@@ -114,6 +114,7 @@ class GeminiVoiceTranscription {
         this.startBtn = document.getElementById('startBtn');
         this.stopBtn = document.getElementById('stopBtn');
         this.clearBtn = document.getElementById('clearBtn');
+        this.promptInput = document.getElementById('promptInput');
         this.status = document.getElementById('statusText');
         this.connectionStatus = document.getElementById('connectionStatus');
         this.transcription = document.getElementById('transcription');
@@ -121,6 +122,10 @@ class GeminiVoiceTranscription {
         this.startBtn.addEventListener('click', () => this.startRecording());
         this.stopBtn.addEventListener('click', () => this.stopRecording());
         this.clearBtn.addEventListener('click', () => this.clearTranscription());
+        
+        // Track when prompt changes to show user they need to reconnect
+        this.lastPrompt = '';
+        this.promptInput.addEventListener('input', () => this.handlePromptChange());
     }
     
     updateStatus(message, isError = false) {
@@ -135,6 +140,14 @@ class GeminiVoiceTranscription {
     
     updateConnectionStatus(status) {
         this.connectionStatus.className = `connection-status ${status}`;
+    }
+    
+    handlePromptChange() {
+        const currentPrompt = this.promptInput.value.trim();
+        if (this.isConnected && currentPrompt !== this.lastPrompt) {
+            this.updateStatus('Prompt changed. Click "Start Recording" to apply new instructions.');
+            // We'll reconnect when starting recording to apply the new prompt
+        }
     }
     
     connectToGemini() {
@@ -191,7 +204,10 @@ class GeminiVoiceTranscription {
     }
     
     sendConfiguration() {
-        // Simplified config that should work with v1alpha
+        // Get user's prompt for system instruction
+        const userPrompt = this.promptInput.value.trim();
+        
+        // Base config that should work with v1alpha with live transcription
         const config = {
             setup: {
                 model: this.model,
@@ -200,6 +216,22 @@ class GeminiVoiceTranscription {
                 }
             }
         };
+        
+        // Add system instruction if user provided a prompt
+        if (userPrompt) {
+            config.setup.systemInstruction = {
+                parts: [{
+                    text: `${userPrompt}\n\nIMPORTANT: Process the user's voice input live according to the instruction above. Provide incremental updates word-by-word or phrase-by-phrase as the user speaks. Be concise and respond progressively to build up your response as you hear more of their speech.`
+                }]
+            };
+        } else {
+            // Default behavior - just transcribe live
+            config.setup.systemInstruction = {
+                parts: [{
+                    text: "You are a live voice transcription assistant. Transcribe what the user says in real-time, showing progressive updates as they speak. Provide accurate, word-by-word transcription."
+                }]
+            };
+        }
         
         console.log('Sending configuration:', config);
         this.ws.send(JSON.stringify(config));
@@ -211,43 +243,46 @@ class GeminiVoiceTranscription {
         
         if (message.setupComplete) {
             this.isConnected = true;
-            this.updateStatus('✅ Ready to transcribe! Click "Start Recording"');
+            this.updateStatus('✅ Ready for live transcription! Click "Start Recording"');
             
         } else if (message.serverContent) {
             console.log('Server content received:', message.serverContent);
             
-            // Check for input transcription (user's voice being transcribed)
-            if (message.serverContent.inputTranscription) {
-                const transcript = message.serverContent.inputTranscription.text;
-                if (transcript) {
-                    console.log('Input transcription received:', transcript);
-                    this.appendTranscription(transcript);
-                }
-            }
-            
-            // Check for model turn (Gemini's response)
+            // Handle live transcription - prioritize model turns for prompt processing
             if (message.serverContent.modelTurn) {
                 const turn = message.serverContent.modelTurn;
                 if (turn.parts) {
                     turn.parts.forEach(part => {
                         if (part.text) {
-                            console.log('Gemini response text:', part.text);
+                            console.log('Gemini live response:', part.text);
                             // Track text output tokens
                             this.sessionStats.textOutputTokens += this.calculateTextTokens(part.text);
                             this.updateTokenCounter();
-                            // Append Gemini's text response as transcription
-                            this.appendTranscription(part.text);
+                            // For live transcription with prompts, display Gemini's processed response
+                            this.updateLiveTranscription(part.text, 'response');
                         }
                     });
                 }
             }
             
-            // Check for output transcription (Gemini's speech transcription)
-            if (message.serverContent.outputTranscription) {
+            // Handle input transcription for live display (when no prompt or as fallback)
+            else if (message.serverContent.inputTranscription) {
+                const transcript = message.serverContent.inputTranscription.text;
+                if (transcript) {
+                    console.log('Input transcription received:', transcript);
+                    // Only show input transcription if no prompt is set (pure transcription mode)
+                    if (!this.promptInput.value.trim()) {
+                        this.updateLiveTranscription(transcript, 'input');
+                    }
+                }
+            }
+            
+            // Handle output transcription if available
+            else if (message.serverContent.outputTranscription) {
                 const transcript = message.serverContent.outputTranscription.text;
                 if (transcript) {
                     console.log('Output transcription received:', transcript);
-                    this.appendTranscription(transcript);
+                    this.updateLiveTranscription(transcript, 'output');
                 }
             }
             
@@ -256,35 +291,73 @@ class GeminiVoiceTranscription {
         }
     }
     
-    appendTranscription(text) {
+    updateLiveTranscription(text, type = 'input') {
         // Clean up the text - remove extra newlines and whitespace
         const cleanText = text.trim();
         if (!cleanText) return;
         
+        // Initialize live transcription tracking
+        if (!this.liveTranscription) {
+            this.liveTranscription = {
+                currentText: '',
+                lastUpdateLength: 0,
+                revisionBuffer: []
+            };
+        }
+        
+        console.log(`[${type}] Live transcription update:`, cleanText);
+        
+        // Handle context-based revisions - if new text is shorter or significantly different
+        // it might be a correction/revision of earlier content
+        if (this.shouldReviseText(cleanText, this.liveTranscription.currentText)) {
+            console.log('Detected revision, updating previous text');
+            this.liveTranscription.currentText = cleanText;
+        } else {
+            // Progressive update - new content being added
+            if (cleanText.length > this.liveTranscription.currentText.length) {
+                this.liveTranscription.currentText = cleanText;
+            } else if (cleanText !== this.liveTranscription.currentText) {
+                // Handle case where Gemini provides a refined version
+                this.liveTranscription.currentText = cleanText;
+            }
+        }
+        
+        // Update the display
+        this.displayLiveText(this.liveTranscription.currentText);
+        
+        // Track length for next comparison
+        this.liveTranscription.lastUpdateLength = this.liveTranscription.currentText.length;
+    }
+    
+    shouldReviseText(newText, currentText) {
+        // Check if this looks like a revision rather than an addition
+        if (!currentText) return false;
+        
+        // If new text is significantly shorter, it's likely a revision
+        if (newText.length < currentText.length * 0.7) return true;
+        
+        // If new text doesn't start with current text, it's likely a revision
+        if (!newText.startsWith(currentText.substring(0, Math.min(20, currentText.length)))) {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    displayLiveText(text) {
         // Check if this is the first transcription
         const currentContent = this.transcription.innerHTML;
         if (currentContent.includes('Your voice transcription will appear here...')) {
             // First transcription - replace placeholder
-            this.transcription.innerHTML = `<p>${cleanText}</p>`;
+            this.transcription.innerHTML = `<p class="live-transcription">${text}</p>`;
         } else {
-            // Check if we should start a new paragraph (if text ends with punctuation)
-            const lastChar = this.transcription.textContent.slice(-1);
-            const shouldNewParagraph = ['.', '!', '?', '\n'].includes(lastChar) || 
-                                     cleanText.match(/^[A-Z]/) && cleanText.length > 20;
-            
-            if (shouldNewParagraph) {
-                // Start new paragraph
-                this.transcription.innerHTML += `<p>${cleanText}</p>`;
+            // Update existing live transcription
+            const liveP = this.transcription.querySelector('.live-transcription');
+            if (liveP) {
+                liveP.textContent = text;
             } else {
-                // Continue current paragraph
-                const paragraphs = this.transcription.querySelectorAll('p');
-                if (paragraphs.length > 0) {
-                    const lastParagraph = paragraphs[paragraphs.length - 1];
-                    lastParagraph.textContent += ' ' + cleanText;
-                } else {
-                    // No paragraphs yet, create first one
-                    this.transcription.innerHTML = `<p>${cleanText}</p>`;
-                }
+                // Create new live transcription paragraph
+                this.transcription.innerHTML = `<p class="live-transcription">${text}</p>`;
             }
         }
         
@@ -292,11 +365,35 @@ class GeminiVoiceTranscription {
         this.transcription.scrollTop = this.transcription.scrollHeight;
     }
     
+    // Keep old method for compatibility during transition
+    appendTranscription(text) {
+        this.updateLiveTranscription(text, 'legacy');
+    }
+    
     async startRecording() {
+        const currentPrompt = this.promptInput.value.trim();
+        
+        // Check if we need to reconnect due to prompt change
+        if (this.isConnected && currentPrompt !== this.lastPrompt) {
+            this.updateStatus('Reconnecting with new prompt...');
+            this.ws.close();
+            this.isConnected = false;
+            // Wait a moment for the connection to close
+            await new Promise(resolve => setTimeout(resolve, 500));
+            this.connectToGemini();
+            // Wait for connection to be established
+            while (!this.isConnected) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
         if (!this.isConnected) {
             this.updateStatus('Please wait for connection to be established', true);
             return;
         }
+        
+        // Update the last prompt
+        this.lastPrompt = currentPrompt;
         
         try {
             // Request microphone access with specific settings for Gemini Live API
@@ -335,10 +432,17 @@ class GeminiVoiceTranscription {
                 this.resetTokenCounter();
             }
             
+            // Reset live transcription state for new recording
+            this.liveTranscription = {
+                currentText: '',
+                lastUpdateLength: 0,
+                revisionBuffer: []
+            };
+            
             this.startBtn.disabled = true;
             this.startBtn.classList.add('recording');
             this.stopBtn.disabled = false;
-            this.updateStatus('🔴 Recording... Speak now!');
+            this.updateStatus('🔴 Live transcription active - speak and see results in real-time!');
             
         } catch (error) {
             console.error('Error starting recording:', error);
@@ -373,7 +477,7 @@ class GeminiVoiceTranscription {
             this.startBtn.disabled = false;
             this.startBtn.classList.remove('recording');
             this.stopBtn.disabled = true;
-            this.updateStatus('Recording stopped. Ready to record again.');
+            this.updateStatus('Live transcription stopped. Ready to start again.');
         }
     }
     
@@ -423,6 +527,8 @@ class GeminiVoiceTranscription {
     
     clearTranscription() {
         this.transcription.innerHTML = '<em>Your voice transcription will appear here...</em>';
+        // Reset live transcription state
+        this.liveTranscription = null;
     }
 }
 

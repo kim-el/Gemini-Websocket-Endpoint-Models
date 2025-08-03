@@ -106,6 +106,28 @@
             color: #666;
             text-indent: 0;
         }
+        
+        .live-transcription {
+            position: relative;
+            animation: livePulse 2s infinite;
+        }
+        
+        .live-transcription::after {
+            content: '●';
+            color: #ff4757;
+            margin-left: 5px;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes livePulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.9; }
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
 
         .token-counter {
             background: rgba(255, 255, 255, 0.95);
@@ -211,6 +233,43 @@
             margin-bottom: 20px;
             font-size: 14px;
         }
+        
+        .prompt-section {
+            margin-bottom: 30px;
+        }
+        
+        .prompt-section label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        #promptInput {
+            width: 100%;
+            min-height: 100px;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            font-size: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        
+        #promptInput:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3), inset 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        #promptInput::placeholder {
+            color: #666;
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
@@ -218,7 +277,13 @@
         <h1>🎤 Gemini Live Voice Transcription</h1>
         
         <div class="info">
-            <p><strong>How it works:</strong> Click "Start Recording" to begin capturing your voice. Speak clearly, and your speech will be transcribed in real-time using Gemini's Live API via WebSocket connection.</p>
+            <p><strong>Live Transcription Mode:</strong> Enter your prompt or question below, then click "Start Recording". Your speech will be transcribed and processed live, word-by-word, according to your prompt. Leave the prompt empty for real-time voice transcription only.</p>
+            <p><strong>Examples:</strong> "Translate to Spanish", "Summarize as bullet points", "Create a to-do list", "Fix grammar and punctuation"</p>
+        </div>
+        
+        <div class="prompt-section">
+            <label for="promptInput">📝 Your Prompt:</label>
+            <textarea id="promptInput" placeholder="Enter your question or instruction here (e.g., 'Summarize what I'm about to say', 'Translate to Spanish', 'Create a to-do list from my speech')..."></textarea>
         </div>
         
         <div class="controls">
